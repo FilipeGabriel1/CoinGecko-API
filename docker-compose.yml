@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # Banco de dados PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: coingecko-db
+    environment:
+      POSTGRES_USER: coingecko
+      POSTGRES_PASSWORD: coingecko123
+      POSTGRES_DB: coingecko_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - coingecko-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coingecko"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend Spring Boot
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: coingecko-backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/coingecko_db
+      SPRING_DATASOURCE_USERNAME: coingecko
+      SPRING_DATASOURCE_PASSWORD: coingecko123
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - coingecko-network
+    restart: unless-stopped
+
+  # Frontend React (Node.js)
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: coingecko-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:8080/api/v1
+    depends_on:
+      - backend
+    networks:
+      - coingecko-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  coingecko-network:
+    driver: bridge
