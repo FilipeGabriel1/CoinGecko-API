@@ -1,19 +1,32 @@
 package com.coingecko.api;
 
-import com.coingecko.dto.CryptoCurrencyDTO;
-import com.coingecko.exception.ResourceNotFoundException;
-import com.coingecko.service.CryptoCurrencyService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.extern.slf4j.Slf4j;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
+import com.coingecko.dto.CryptoCurrencyDTO;
+import com.coingecko.exception.ResourceNotFoundException;
+import com.coingecko.service.CryptoCurrencyService;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Controller: CryptoCurrencyController
@@ -54,7 +67,7 @@ public class CryptoCurrencyController {
     }
     
     @Operation(summary = "Listar todas as criptomoedas", description = "Retorna lista de todas as criptomoedas cadastradas")
-    @GetMapping
+    @GetMapping({"", "/"})
     public ResponseEntity<List<CryptoCurrencyDTO>> findAll() {
         log.info("Listando todas as criptomoedas");
         List<CryptoCurrencyDTO> cryptos = cryptoCurrencyService.findAll();
@@ -78,11 +91,40 @@ public class CryptoCurrencyController {
     }
     
     @Operation(summary = "Criar nova criptomoeda", description = "Cria uma nova criptomoeda no banco de dados")
-    @PostMapping
+    @PostMapping({"", "/"})
     public ResponseEntity<CryptoCurrencyDTO> create(@Valid @RequestBody CryptoCurrencyDTO cryptoDTO) {
         log.info("Criando nova criptomoeda: {}", cryptoDTO.getId());
         CryptoCurrencyDTO saved = cryptoCurrencyService.save(cryptoDTO);
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    }
+
+    @Operation(
+            summary = "Popular dados de exemplo",
+            description = "Cria criptomoedas no banco (defaults ou via CoinGecko). Use 'top' para top N por market cap, ou 'ids' (csv) para uma lista customizada. Opcionalmente atualiza preços via CoinGecko."
+    )
+    @PostMapping("/seed")
+    public ResponseEntity<List<CryptoCurrencyDTO>> seed(
+            @RequestParam(name = "updateFromCoinGecko", defaultValue = "false") boolean updateFromCoinGecko,
+            @RequestParam(name = "top", required = false) Integer top,
+            @RequestParam(name = "ids", required = false) String ids) {
+
+        if (ids != null && !ids.isBlank()) {
+            List<String> idList = Arrays.stream(ids.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isBlank())
+                    .collect(Collectors.toList());
+            log.info("Seeding por ids (count={}, updateFromCoinGecko={})", idList.size(), updateFromCoinGecko);
+            return ResponseEntity.ok(cryptoCurrencyService.seedByIds(idList, updateFromCoinGecko));
+        }
+
+        if (top != null) {
+            log.info("Seeding top={} (updateFromCoinGecko={})", top, updateFromCoinGecko);
+            return ResponseEntity.ok(cryptoCurrencyService.seedTop(top, updateFromCoinGecko));
+        }
+
+        log.info("Seeding defaults (updateFromCoinGecko={})", updateFromCoinGecko);
+        List<CryptoCurrencyDTO> seeded = cryptoCurrencyService.seedDefaults(updateFromCoinGecko);
+        return ResponseEntity.ok(seeded);
     }
     
     @Operation(summary = "Deletar criptomoeda", description = "Deleta uma criptomoeda pelo seu ID")

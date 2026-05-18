@@ -117,6 +117,24 @@ Frontend/
 
 ## 🧪 Testar Endpoints
 
+### Popular o banco (seed)
+
+Você pode popular o banco automaticamente via endpoint `POST /api/v1/cryptocurrencies/seed`.
+
+Opções:
+- Defaults (bitcoin/ethereum/solana):
+	- `POST http://localhost:8080/api/v1/cryptocurrencies/seed?updateFromCoinGecko=true`
+- Top N por market cap (ex.: top 10):
+	- `POST http://localhost:8080/api/v1/cryptocurrencies/seed?top=10&updateFromCoinGecko=true`
+- Lista customizada (ids CoinGecko separados por vírgula):
+	- `POST http://localhost:8080/api/v1/cryptocurrencies/seed?ids=cardano,dogecoin,polkadot&updateFromCoinGecko=true`
+
+Exemplo no PowerShell:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/v1/cryptocurrencies/seed?top=10&updateFromCoinGecko=true"
+```
+
 ### Curl - Listar Top 10
 
 ```bash

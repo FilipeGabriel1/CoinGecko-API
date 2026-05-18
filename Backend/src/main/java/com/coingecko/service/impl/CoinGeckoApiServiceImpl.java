@@ -1,20 +1,28 @@
 package com.coingecko.service.impl;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestTemplate;
+
 import com.coingecko.dto.CryptoCurrencyDTO;
 import com.coingecko.dto.CryptoPriceDTO;
 import com.coingecko.exception.ExternalApiException;
 import com.coingecko.service.CoinGeckoApiService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestTemplate;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.Optional;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Implementação: CoinGeckoApiServiceImpl
@@ -76,6 +84,130 @@ public class CoinGeckoApiServiceImpl implements CoinGeckoApiService {
             throw new ExternalApiException(API_NAME, "Erro ao processar resposta", e);
         }
     }
+
+    @Override
+    public Map<String, CryptoCurrencyDTO> getCryptocurrencyDataBulk(List<String> cryptoIds) {
+        try {
+            if (!isApiAvailable()) {
+                log.warn("CoinGecko API está desabilitada");
+                return Collections.emptyMap();
+            }
+
+            if (cryptoIds == null) {
+                return Collections.emptyMap();
+            }
+
+            List<String> normalizedIds = cryptoIds.stream()
+                    .filter(s -> s != null && !s.isBlank())
+                    .map(String::trim)
+                    .map(String::toLowerCase)
+                    .distinct()
+                    .limit(250)
+                    .collect(Collectors.toList());
+
+            if (normalizedIds.isEmpty()) {
+                return Collections.emptyMap();
+            }
+
+            String url = buildCoinGeckoBulkUrl(normalizedIds);
+            String response = restTemplate.getForObject(url, String.class);
+
+            if (response == null || response.isEmpty()) {
+                log.warn("Resposta vazia de CoinGecko (bulk) idsCount={}", normalizedIds.size());
+                return Collections.emptyMap();
+            }
+
+            JsonNode rootNode = objectMapper.readTree(response);
+            Map<String, CryptoCurrencyDTO> result = new HashMap<>();
+
+            for (String id : normalizedIds) {
+                if (rootNode.has(id)) {
+                    parseApiResponse(id, rootNode.get(id)).ifPresent(dto -> result.put(id, dto));
+                }
+            }
+
+            return result;
+
+        } catch (RestClientException e) {
+            log.error("Erro de conectividade com CoinGecko API (bulk)", e);
+            throw new ExternalApiException(API_NAME, "Erro ao conectar à API", e);
+        } catch (Exception e) {
+            log.error("Erro inesperado ao consumir CoinGecko API (bulk)", e);
+            throw new ExternalApiException(API_NAME, "Erro ao processar resposta", e);
+        }
+    }
+
+    @Override
+    public List<CryptoCurrencyDTO> getTopMarketCryptos(int limit) {
+        try {
+            if (!isApiAvailable()) {
+                log.warn("CoinGecko API está desabilitada");
+                return Collections.emptyList();
+            }
+
+            int safeLimit = Math.max(1, Math.min(limit, 250));
+            String url = buildMarketsTopUrl(safeLimit);
+            String response = restTemplate.getForObject(url, String.class);
+
+            if (response == null || response.isEmpty()) {
+                log.warn("Resposta vazia de CoinGecko (markets/top) limit={}", safeLimit);
+                return Collections.emptyList();
+            }
+
+            JsonNode rootNode = objectMapper.readTree(response);
+            return parseMarketsArray(rootNode);
+
+        } catch (RestClientException e) {
+            log.error("Erro de conectividade com CoinGecko API (markets/top) limit={}", limit, e);
+            throw new ExternalApiException(API_NAME, "Erro ao conectar à API", e);
+        } catch (Exception e) {
+            log.error("Erro inesperado ao consumir CoinGecko API (markets/top) limit={}", limit, e);
+            throw new ExternalApiException(API_NAME, "Erro ao processar resposta", e);
+        }
+    }
+
+    @Override
+    public List<CryptoCurrencyDTO> getMarketCryptosByIds(List<String> ids) {
+        try {
+            if (!isApiAvailable()) {
+                log.warn("CoinGecko API está desabilitada");
+                return Collections.emptyList();
+            }
+
+            if (ids == null) {
+                return Collections.emptyList();
+            }
+
+            List<String> normalizedIds = ids.stream()
+                    .filter(s -> s != null && !s.isBlank())
+                    .map(String::trim)
+                    .map(String::toLowerCase)
+                    .distinct()
+                    .collect(Collectors.toList());
+
+            if (normalizedIds.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            String url = buildMarketsByIdsUrl(normalizedIds);
+            String response = restTemplate.getForObject(url, String.class);
+
+            if (response == null || response.isEmpty()) {
+                log.warn("Resposta vazia de CoinGecko (markets/ids) idsCount={}", normalizedIds.size());
+                return Collections.emptyList();
+            }
+
+            JsonNode rootNode = objectMapper.readTree(response);
+            return parseMarketsArray(rootNode);
+
+        } catch (RestClientException e) {
+            log.error("Erro de conectividade com CoinGecko API (markets/ids)", e);
+            throw new ExternalApiException(API_NAME, "Erro ao conectar à API", e);
+        } catch (Exception e) {
+            log.error("Erro inesperado ao consumir CoinGecko API (markets/ids)", e);
+            throw new ExternalApiException(API_NAME, "Erro ao processar resposta", e);
+        }
+    }
     
     @Override
     public boolean isApiAvailable() {
@@ -88,6 +220,74 @@ public class CoinGeckoApiServiceImpl implements CoinGeckoApiService {
                 COINGECKO_API_URL,
                 cryptoId.toLowerCase()
         );
+    }
+
+    private String buildCoinGeckoBulkUrl(List<String> cryptoIds) {
+        String joined = String.join(",", cryptoIds);
+        return String.format(
+                "%s/simple/price?ids=%s&vs_currencies=usd,eur,brl&include_market_cap=true&include_24hr_vol=true&include_24hr_change=true",
+                COINGECKO_API_URL,
+                joined
+        );
+    }
+
+    private String buildMarketsTopUrl(int limit) {
+        return String.format(
+                "%s/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=%d&page=1&sparkline=false",
+                COINGECKO_API_URL,
+                limit
+        );
+    }
+
+    private String buildMarketsByIdsUrl(List<String> ids) {
+        String joined = String.join(",", ids);
+        return String.format(
+                "%s/coins/markets?vs_currency=usd&ids=%s&order=market_cap_desc&per_page=%d&page=1&sparkline=false",
+                COINGECKO_API_URL,
+                joined,
+                Math.min(ids.size(), 250)
+        );
+    }
+
+    private List<CryptoCurrencyDTO> parseMarketsArray(JsonNode rootNode) {
+        if (rootNode == null || !rootNode.isArray()) {
+            log.warn("Resposta inesperada de CoinGecko (markets): não é array");
+            return Collections.emptyList();
+        }
+
+        List<CryptoCurrencyDTO> result = new ArrayList<>();
+        for (JsonNode node : rootNode) {
+            CryptoCurrencyDTO dto = parseMarketNode(node);
+            if (dto != null) {
+                result.add(dto);
+            }
+        }
+        return result;
+    }
+
+    private CryptoCurrencyDTO parseMarketNode(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+
+        if (!node.hasNonNull("id") || !node.hasNonNull("symbol") || !node.hasNonNull("name")) {
+            return null;
+        }
+
+        CryptoCurrencyDTO dto = new CryptoCurrencyDTO();
+        dto.setId(node.get("id").asText());
+        dto.setSymbol(node.get("symbol").asText().toUpperCase());
+        dto.setName(node.get("name").asText());
+
+        if (node.hasNonNull("image")) {
+            dto.setImageUrl(node.get("image").asText());
+        }
+        if (node.hasNonNull("market_cap_rank")) {
+            dto.setMarketCapRank(node.get("market_cap_rank").asLong());
+        }
+        dto.setLastUpdated(LocalDateTime.now());
+
+        return dto;
     }
     
     private Optional<CryptoCurrencyDTO> parseApiResponse(String cryptoId, JsonNode data) {

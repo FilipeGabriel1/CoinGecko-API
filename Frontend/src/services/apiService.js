@@ -6,7 +6,7 @@ import axios from 'axios';
  * SOLID - Dependency Inversion: Abstração de requisições HTTP
  */
 
-const API_BASE_URL = 'http://localhost:8080/api/v1/cryptocurrencies';
+const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8080/api/v1/cryptocurrencies';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -52,7 +52,7 @@ export const getCryptoBySymbol = async (symbol) => {
  */
 export const getAllCryptos = async () => {
   try {
-    const response = await apiClient.get('/');
+    const response = await apiClient.get('');
     return response.data;
   } catch (error) {
     console.error('Erro ao listar criptomoedas:', error);
@@ -98,7 +98,7 @@ export const getTopCryptos = async () => {
  */
 export const createCrypto = async (crypto) => {
   try {
-    const response = await apiClient.post('/', crypto);
+    const response = await apiClient.post('', crypto);
     return response.data;
   } catch (error) {
     console.error('Erro ao criar cripto:', error);

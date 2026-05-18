@@ -1,24 +1,31 @@
 package com.coingecko.service.impl;
 
-import com.coingecko.dto.CryptoCurrencyDTO;
-import com.coingecko.exception.ResourceNotFoundException;
-import com.coingecko.model.Cryptocurrency;
-import com.coingecko.model.CryptoCurrencyPrice;
-import com.coingecko.repository.CryptocurrencyRepository;
-import com.coingecko.repository.CryptoCurrencyPriceRepository;
-import com.coingecko.service.CoinGeckoApiService;
-import com.coingecko.service.CryptoCurrencyService;
-import com.coingecko.service.DtoMapper;
-import lombok.extern.slf4j.Slf4j;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-import java.util.stream.Collectors;
+import com.coingecko.dto.CryptoCurrencyDTO;
+import com.coingecko.exception.ResourceNotFoundException;
+import com.coingecko.model.CryptoCurrencyPrice;
+import com.coingecko.model.Cryptocurrency;
+import com.coingecko.repository.CryptoCurrencyPriceRepository;
+import com.coingecko.repository.CryptocurrencyRepository;
+import com.coingecko.service.CoinGeckoApiService;
+import com.coingecko.service.CryptoCurrencyService;
+import com.coingecko.service.DtoMapper;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Implementação: CryptoCurrencyServiceImpl
@@ -149,18 +156,150 @@ public class CryptoCurrencyServiceImpl implements CryptoCurrencyService {
             log.warn("Dados não encontrados na API CoinGecko para: {}", id);
         }
     }
+
+    @Override
+    @CacheEvict(value = {"cryptos", "cryptosBySymbol", "allCryptos", "topCryptos"}, allEntries = true)
+    public List<CryptoCurrencyDTO> seedTop(int limit, boolean updateFromCoinGecko) {
+        int safeLimit = Math.max(1, Math.min(limit, 250));
+        List<CryptoCurrencyDTO> marketDtos = coinGeckoApiService.getTopMarketCryptos(safeLimit);
+        return seedFromMarketDtos(marketDtos, updateFromCoinGecko);
+    }
+
+    @Override
+    @CacheEvict(value = {"cryptos", "cryptosBySymbol", "allCryptos", "topCryptos"}, allEntries = true)
+    public List<CryptoCurrencyDTO> seedByIds(List<String> ids, boolean updateFromCoinGecko) {
+        if (ids == null) {
+            return Collections.emptyList();
+        }
+        List<CryptoCurrencyDTO> marketDtos = coinGeckoApiService.getMarketCryptosByIds(ids);
+        return seedFromMarketDtos(marketDtos, updateFromCoinGecko);
+    }
+
+    @Override
+    @CacheEvict(value = {"cryptos", "cryptosBySymbol", "allCryptos", "topCryptos"}, allEntries = true)
+    public List<CryptoCurrencyDTO> seedDefaults(boolean updateFromCoinGecko) {
+        List<CryptoCurrencyDTO> defaults = List.of(
+                new CryptoCurrencyDTO("bitcoin", "BTC", "Bitcoin", "Criptomoeda mais conhecida do mercado.", null, 1L, null, null),
+                new CryptoCurrencyDTO("ethereum", "ETH", "Ethereum", "Plataforma de contratos inteligentes.", null, 2L, null, null),
+                new CryptoCurrencyDTO("solana", "SOL", "Solana", "Blockchain focada em performance.", null, 3L, null, null)
+        );
+
+        List<CryptoCurrencyDTO> seeded = new ArrayList<>();
+
+        for (CryptoCurrencyDTO dto : defaults) {
+            Cryptocurrency entity = cryptoRepository.findById(dto.getId())
+                    .orElseGet(() -> {
+                        Cryptocurrency created = dtoMapper.toEntity(dto);
+                        created.setLastUpdated(LocalDateTime.now());
+                        return cryptoRepository.save(created);
+                    });
+
+            if (updateFromCoinGecko) {
+                try {
+                    coinGeckoApiService.getCryptocurrencyData(entity.getId())
+                            .ifPresent(apiDto -> {
+                                if (apiDto.getPrice() != null) {
+                                    priceRepository.findByCryptocurrency_Id(entity.getId())
+                                            .ifPresentOrElse(
+                                                    price -> updateCryptoPrice(price, apiDto),
+                                                    () -> saveCryptoPriceFromDTO(entity, apiDto)
+                                            );
+                                }
+                            });
+                } catch (Exception e) {
+                    log.warn("Seed: falha ao atualizar preços via CoinGecko para {}", entity.getId(), e);
+                }
+            }
+
+            seeded.add(dtoMapper.toDTO(entity));
+        }
+
+        return seeded;
+    }
+
+    private List<CryptoCurrencyDTO> seedFromMarketDtos(List<CryptoCurrencyDTO> marketDtos, boolean updateFromCoinGecko) {
+        if (marketDtos == null || marketDtos.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<CryptoCurrencyDTO> seeded = new ArrayList<>();
+
+        Map<String, CryptoCurrencyDTO> bulkPrices = Collections.emptyMap();
+        if (updateFromCoinGecko) {
+            try {
+                List<String> ids = marketDtos.stream()
+                        .map(CryptoCurrencyDTO::getId)
+                        .filter(s -> s != null && !s.isBlank())
+                        .collect(Collectors.toList());
+                bulkPrices = coinGeckoApiService.getCryptocurrencyDataBulk(ids);
+            } catch (Exception e) {
+                log.warn("Seed: falha ao obter preços em lote via CoinGecko", e);
+            }
+        }
+
+        for (CryptoCurrencyDTO dto : marketDtos) {
+            if (dto == null || dto.getId() == null || dto.getId().isBlank()) {
+                continue;
+            }
+
+            Cryptocurrency entity = cryptoRepository.findById(dto.getId())
+                    .map(existing -> {
+                        existing.setSymbol(dto.getSymbol());
+                        existing.setName(dto.getName());
+                        existing.setImageUrl(dto.getImageUrl());
+                        existing.setMarketCapRank(dto.getMarketCapRank());
+                        existing.setLastUpdated(LocalDateTime.now());
+                        return existing;
+                    })
+                    .orElseGet(() -> {
+                        Cryptocurrency created = dtoMapper.toEntity(dto);
+                        created.setLastUpdated(LocalDateTime.now());
+                        return created;
+                    });
+
+            Cryptocurrency saved = cryptoRepository.save(entity);
+
+            if (updateFromCoinGecko) {
+                CryptoCurrencyDTO apiDto = bulkPrices.get(saved.getId());
+                if (apiDto != null && apiDto.getPrice() != null) {
+                    upsertPriceFromDTO(saved, apiDto);
+                }
+            }
+
+            CryptoCurrencyDTO out = cryptoRepository.findById(saved.getId())
+                    .map(dtoMapper::toDTO)
+                    .orElse(dtoMapper.toDTO(saved));
+            seeded.add(out);
+        }
+
+        seeded.sort(Comparator.comparing(CryptoCurrencyDTO::getMarketCapRank, Comparator.nullsLast(Long::compareTo)));
+        return seeded;
+    }
+
+    private void upsertPriceFromDTO(Cryptocurrency crypto, CryptoCurrencyDTO dto) {
+        if (crypto == null || crypto.getId() == null || dto == null || dto.getPrice() == null) {
+            return;
+        }
+
+        priceRepository.findByCryptocurrency_Id(crypto.getId())
+                .ifPresentOrElse(
+                        price -> updateCryptoPrice(price, dto),
+                        () -> saveCryptoPriceFromDTO(crypto, dto)
+                );
+    }
     
     private void saveCryptoPrice(Cryptocurrency crypto, CryptoCurrencyDTO dto) {
         CryptoCurrencyPrice price = new CryptoCurrencyPrice();
         price.setCryptocurrency(crypto);
-        price.setPriceUsd(dto.getPrice().getPriceUsd());
-        price.setPriceEur(dto.getPrice().getPriceEur());
-        price.setPriceBrl(dto.getPrice().getPriceBrl());
-        price.setVolume24hUsd(dto.getPrice().getVolume24hUsd());
-        price.setPriceChangePercentage24h(dto.getPrice().getPriceChangePercentage24h());
-        price.setMarketCap(dto.getPrice().getMarketCap());
+        price.setPriceUsd(defaultBigDecimal(dto.getPrice().getPriceUsd()));
+        price.setPriceEur(defaultBigDecimal(dto.getPrice().getPriceEur()));
+        price.setPriceBrl(defaultBigDecimal(dto.getPrice().getPriceBrl()));
+        price.setVolume24hUsd(defaultBigDecimal(dto.getPrice().getVolume24hUsd()));
+        price.setPriceChangePercentage24h(defaultBigDecimal(dto.getPrice().getPriceChangePercentage24h()));
+        price.setMarketCap(defaultBigDecimal(dto.getPrice().getMarketCap()));
         price.setTimestamp(LocalDateTime.now());
-        
+
+        crypto.setCurrentPrice(price);
         priceRepository.save(price);
         log.debug("Preço salvo para cripto: {}", crypto.getId());
     }
@@ -168,28 +307,36 @@ public class CryptoCurrencyServiceImpl implements CryptoCurrencyService {
     private void saveCryptoPriceFromDTO(Cryptocurrency crypto, CryptoCurrencyDTO dto) {
         CryptoCurrencyPrice price = new CryptoCurrencyPrice();
         price.setCryptocurrency(crypto);
-        price.setPriceUsd(dto.getPrice().getPriceUsd());
-        price.setPriceEur(dto.getPrice().getPriceEur());
-        price.setPriceBrl(dto.getPrice().getPriceBrl());
-        price.setVolume24hUsd(dto.getPrice().getVolume24hUsd());
-        price.setPriceChangePercentage24h(dto.getPrice().getPriceChangePercentage24h());
-        price.setMarketCap(dto.getPrice().getMarketCap());
+        price.setPriceUsd(defaultBigDecimal(dto.getPrice().getPriceUsd()));
+        price.setPriceEur(defaultBigDecimal(dto.getPrice().getPriceEur()));
+        price.setPriceBrl(defaultBigDecimal(dto.getPrice().getPriceBrl()));
+        price.setVolume24hUsd(defaultBigDecimal(dto.getPrice().getVolume24hUsd()));
+        price.setPriceChangePercentage24h(defaultBigDecimal(dto.getPrice().getPriceChangePercentage24h()));
+        price.setMarketCap(defaultBigDecimal(dto.getPrice().getMarketCap()));
         price.setTimestamp(LocalDateTime.now());
-        
+
+        crypto.setCurrentPrice(price);
         priceRepository.save(price);
         log.debug("Preço inicial salvo para cripto: {}", crypto.getId());
     }
     
     private void updateCryptoPrice(CryptoCurrencyPrice price, CryptoCurrencyDTO dto) {
-        price.setPriceUsd(dto.getPrice().getPriceUsd());
-        price.setPriceEur(dto.getPrice().getPriceEur());
-        price.setPriceBrl(dto.getPrice().getPriceBrl());
-        price.setVolume24hUsd(dto.getPrice().getVolume24hUsd());
-        price.setPriceChangePercentage24h(dto.getPrice().getPriceChangePercentage24h());
-        price.setMarketCap(dto.getPrice().getMarketCap());
+        price.setPriceUsd(defaultBigDecimal(dto.getPrice().getPriceUsd()));
+        price.setPriceEur(defaultBigDecimal(dto.getPrice().getPriceEur()));
+        price.setPriceBrl(defaultBigDecimal(dto.getPrice().getPriceBrl()));
+        price.setVolume24hUsd(defaultBigDecimal(dto.getPrice().getVolume24hUsd()));
+        price.setPriceChangePercentage24h(defaultBigDecimal(dto.getPrice().getPriceChangePercentage24h()));
+        price.setMarketCap(defaultBigDecimal(dto.getPrice().getMarketCap()));
         price.setTimestamp(LocalDateTime.now());
-        
+
+        if (price.getCryptocurrency() != null) {
+            price.getCryptocurrency().setCurrentPrice(price);
+        }
         priceRepository.save(price);
         log.debug("Preço atualizado para cripto: {}", price.getCryptocurrency().getId());
+    }
+
+    private BigDecimal defaultBigDecimal(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
     }
 }
