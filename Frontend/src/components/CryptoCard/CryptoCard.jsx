@@ -1,75 +1,97 @@
-import React, { useState, useCallback, memo } from 'react';
-import { useCrypto } from '../../context/CryptoContext';
-import { deleteCrypto, updateFromCoinGecko } from '../../services/apiService';
-import { MESSAGES } from '../../constants/app.constants';
-import CryptoHeader from './CryptoHeader';
-import CryptoPriceDisplay from './CryptoPriceDisplay';
-import CryptoStats from './CryptoStats';
-import CryptoActions from './CryptoActions';
+import React from 'react';
+import {
+  formatUSD,
+  formatEUR,
+  formatBRL,
+  formatPercentage,
+  formatVolume,
+} from '../../utils/formatters';
 import './CryptoCard.css';
 
-/**
- * Componente: CryptoCard
- * Responsabilidade: Exibir informações de uma criptomoeda (card)
- * SOLID - Single Responsibility: Gerencia apenas a lógica do card
- * SOLID - Composition: Usa subcomponentes para cada seção
- * Otimização: Memoizado + subcomponentes memoizados
- */
-function CryptoCard({ crypto, onSelect }) {
-  const { removeCrypto, setLoading, setError } = useCrypto();
-  const [isUpdating, setIsUpdating] = useState(false);
-
-  const handleDelete = useCallback(async () => {
-    if (window.confirm(MESSAGES.CONFIRM_DELETE(crypto.name))) {
-      try {
-        setLoading(true);
-        await deleteCrypto(crypto.id);
-        removeCrypto(crypto.id);
-        setError(null);
-      } catch (err) {
-        console.error('Erro ao deletar:', err);
-        setError(`${MESSAGES.ERROR_DELETE}: ${err.message}`);
-      } finally {
-        setLoading(false);
-      }
-    }
-  }, [crypto.id, crypto.name, removeCrypto, setLoading, setError]);
-
-  const handleUpdate = useCallback(async () => {
-    try {
-      setIsUpdating(true);
-      setError(null);
-      await updateFromCoinGecko(crypto.id);
-      setError(MESSAGES.SUCCESS_UPDATE);
-    } catch (err) {
-      console.error('Erro ao atualizar:', err);
-      setError(`${MESSAGES.ERROR_UPDATE}: ${err.message}`);
-    } finally {
-      setIsUpdating(false);
-    }
-  }, [crypto.id, setError]);
-
-  const handleCardClick = useCallback(() => {
-    onSelect?.(crypto);
-  }, [crypto, onSelect]);
+function CryptoCard({ crypto, onSelect, onDelete, onUpdate, disabled }) {
+  const price = crypto.price || crypto.currentPrice || {};
+  const change = price.priceChangePercentage24h ?? 0;
+  const isPositive = change >= 0;
 
   return (
     <article
       className="crypto-card"
-      onClick={handleCardClick}
+      onClick={() => onSelect?.(crypto)}
       role="article"
       aria-label={`Criptomoeda: ${crypto.name}`}
     >
-      <CryptoHeader crypto={crypto} />
-      <CryptoPriceDisplay price={crypto.price} />
-      <CryptoStats price={crypto.price} />
-      <CryptoActions
-        isUpdating={isUpdating}
-        onUpdate={handleUpdate}
-        onDelete={handleDelete}
-      />
+      <div className="crypto-header">
+        {crypto.imageUrl && (
+          <img
+            src={crypto.imageUrl}
+            alt={crypto.name}
+            className="crypto-image"
+            loading="lazy"
+          />
+        )}
+        <div className="crypto-details">
+          <h3 className="crypto-name">{crypto.name}</h3>
+          <p className="crypto-symbol">{(crypto.symbol || '').toUpperCase()}</p>
+          {crypto.marketCapRank && (
+            <span className="crypto-rank">#{crypto.marketCapRank}</span>
+          )}
+        </div>
+      </div>
+
+      <div className="crypto-prices">
+        <div className="price-item">
+          <span className="price-label">USD</span>
+          <span className="price-value">{formatUSD(price.priceUsd)}</span>
+        </div>
+        <div className="price-item">
+          <span className="price-label">EUR</span>
+          <span className="price-value">{formatEUR(price.priceEur)}</span>
+        </div>
+        <div className="price-item">
+          <span className="price-label">BRL</span>
+          <span className="price-value">{formatBRL(price.priceBrl)}</span>
+        </div>
+      </div>
+
+      <div className="crypto-stats">
+        <span className={`change-percentage ${isPositive ? 'positive' : 'negative'}`}>
+          {formatPercentage(change)}
+        </span>
+        {price.volume24hUsd && (
+          <span className="stat-item">Vol 24h: {formatVolume(price.volume24hUsd)}</span>
+        )}
+        {price.marketCap && (
+          <span className="stat-item">Market Cap: {formatVolume(price.marketCap)}</span>
+        )}
+      </div>
+
+      <div className="crypto-actions">
+        <button
+          className="btn btn-update"
+          onClick={(event) => {
+            event.stopPropagation();
+            onUpdate?.(crypto);
+          }}
+          disabled={disabled}
+          aria-label="Atualizar de CoinGecko"
+          title="Atualizar"
+        >
+          🔄
+        </button>
+        <button
+          className="btn btn-delete"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete?.(crypto);
+          }}
+          aria-label="Deletar criptomoeda"
+          title="Deletar"
+        >
+          <span aria-hidden="true">🗑️</span>
+        </button>
+      </div>
     </article>
   );
 }
 
-export default memo(CryptoCard);
+export default CryptoCard;

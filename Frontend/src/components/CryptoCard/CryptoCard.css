@@ -1,37 +1,40 @@
 .crypto-card {
   background: white;
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
+  border-radius: 10px;
+  padding: 14px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
   cursor: pointer;
-  border: 2px solid transparent;
+  border: 1px solid #f0f0f0;
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
 }
 
 .crypto-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
-  border-color: #667eea;
+  transform: translateY(-3px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+  border-color: #f97316;
 }
 
 .crypto-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 16px;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .crypto-info {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
+  gap: 10px;
+  align-items: center;
   flex: 1;
 }
 
 .crypto-image {
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   object-fit: cover;
 }
@@ -42,29 +45,29 @@
 
 .crypto-name {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #222;
+  margin-bottom: 2px;
 }
 
 .crypto-symbol {
   margin: 0;
-  font-size: 14px;
-  color: #999;
+  font-size: 12px;
+  color: #777;
   text-transform: uppercase;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .crypto-rank {
-  margin: 4px 0 0 0;
-  font-size: 12px;
-  color: #667eea;
+  margin: 2px 0 0 0;
+  font-size: 11px;
+  color: #f97316;
   font-weight: 600;
 }
 
 .crypto-rank-badge {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #fbbf24 0%, #f97316 100%);
   color: white;
   padding: 6px 12px;
   border-radius: 20px;
@@ -74,89 +77,90 @@
 
 .crypto-prices {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-  gap: 12px;
-  margin-bottom: 12px;
-  padding: 12px;
-  background: #f9f9f9;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px;
+  background: #fffbeb;
   border-radius: 8px;
 }
 
 .price-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .price-label {
-  font-size: 12px;
-  color: #999;
-  font-weight: 600;
+  font-size: 11px;
+  color: #888;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
 .price-value {
-  font-size: 16px;
-  font-weight: 600;
-  color: #333;
+  font-size: 14px;
+  font-weight: 700;
+  color: #222;
 }
 
 .crypto-change {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 12px;
+  justify-content: flex-start;
+  margin-bottom: 10px;
 }
 
 .change-percentage {
-  font-size: 14px;
-  font-weight: 600;
-  padding: 4px 8px;
-  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
 }
 
 .change-percentage.positive {
-  color: #10b981;
+  color: #0f766e;
   background: #ecfdf5;
 }
 
 .change-percentage.negative {
-  color: #ef4444;
+  color: #b91c1c;
   background: #fef2f2;
 }
 
 .crypto-volume {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 11px;
   color: #666;
   padding: 8px;
-  background: #f0f0ff;
+  background: #fff7ed;
   border-radius: 6px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .volume-label {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .volume-value {
   font-weight: 700;
-  color: #667eea;
+  color: #c2410c;
 }
 
 .crypto-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   justify-content: flex-end;
+  margin-top: auto;
 }
 
 .btn {
   border: none;
-  padding: 8px 12px;
+  padding: 6px 10px;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, border-color 0.2s ease;
   background: none;
   border: 1px solid #ddd;
   display: flex;
@@ -166,7 +170,7 @@
 
 .btn:hover:not(:disabled) {
   transform: scale(1.1);
-  border-color: #667eea;
+  border-color: #f97316;
 }
 
 .btn:disabled {
@@ -175,11 +179,11 @@
 }
 
 .btn-update {
-  color: #667eea;
+  color: #d97706;
 }
 
 .btn-update:hover:not(:disabled) {
-  background: #f0f0ff;
+  background: #fff7ed;
 }
 
 .btn-delete {
